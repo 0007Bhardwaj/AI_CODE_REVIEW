@@ -1,14 +1,18 @@
-const { Octokit } = require("@octokit/rest");
+const axios = require("axios");
 const { WebClient } = require("@slack/web-api");
-const { Client } = require("twilio");
+const twilio = require("twilio");
 const { ChatOpenAI } = require("@langchain/openai");
 const { HumanMessage } = require("@langchain/core/messages");
 
 require("dotenv").config();
 
-const octokit = new Octokit({ auth: process.env.GH_TOKEN });
+async function getOctokit() {
+  const { Octokit } = await import("@octokit/rest");
+  return new Octokit({ auth: process.env.GH_TOKEN });
+}
+
 const slack = new WebClient(process.env.SLACK_TOKEN);
-const twilio = new Client(process.env.TWILIO_SID, process.env.TWILIO_AUTH_TOKEN);
+const twilioClient = twilio(process.env.TWILIO_SID, process.env.TWILIO_AUTH_TOKEN);
 const llm = new ChatOpenAI({
   model: "gpt-4",
   apiKey: process.env.AI_API_KEY,
@@ -16,6 +20,7 @@ const llm = new ChatOpenAI({
 
 async function getCommitChanges(owner, repo, commitSha) {
   try {
+    const octokit = await getOctokit();
     const { data } = await octokit.repos.getCommit({ owner, repo, ref: commitSha });
     const files = data.files;
     let changes = "";
@@ -53,7 +58,7 @@ async function sendToSlack(message, webhookUrl) {
 
 async function sendToWhatsApp(message, toNumber) {
   try {
-    await twilio.messages.create({
+    await twilioClient.messages.create({
       body: message,
       from: `whatsapp:${process.env.TWILIO_PHONE_NUMBER}`,
       to: `whatsapp:${toNumber}`,
@@ -66,7 +71,7 @@ async function sendToWhatsApp(message, toNumber) {
 
 async function main() {
   const { GITHUB_REPOSITORY, GITHUB_SHA, SLACK_WEBHOOK_URL, WHATSAPP_NUMBER } = process.env;
-  const [owner, repo] = GITHUB_REPOSITORY.split("/");
+  const [owner, repo] = GITHUB_REPOSITORY?.split("/");
   const commitSha = GITHUB_SHA;
 
   const changes = await getCommitChanges(owner, repo, commitSha);
